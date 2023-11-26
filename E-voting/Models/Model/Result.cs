@@ -7,10 +7,8 @@ using System.Web;
 
 namespace E_voting.Models.Model
 {
-    [Table("Result")]
     public class Result
     {
-        [Key]
         public int VoteCastingId { get; set; }
 
         public string CandidateId { get; set; }

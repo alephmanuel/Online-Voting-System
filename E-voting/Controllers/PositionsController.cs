@@ -2,23 +2,56 @@
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Entity;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Web;
 using System.Web.Mvc;
-using E_voting.Models.DataContext;
 using E_voting.Models.Model;
+using System.Text.Json;
 
 namespace E_voting.Controllers
 {
     public class PositionsController : Controller
     {
-        private EvotingDBContext db = new EvotingDBContext();
+        private  string PositionsFilePath;
+        private List<Position> positions;
+
+        private T LoadFromJson<T>(string filePath)
+        {
+            try
+            {
+                var virtualPath = $"~/{filePath.Replace(HttpContext.Server.MapPath("~"), string.Empty).TrimStart('\\').Replace('\\', '/')}";
+                var physicalPath = HttpContext.Server.MapPath(virtualPath);
+                var json = System.IO.File.ReadAllText(physicalPath);
+                return JsonSerializer.Deserialize<T>(json);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Exception reading file {filePath}: {ex.Message}");
+                return default;
+            }
+        }
+        private void SaveToJson<T>(T data, string filePath)
+        {
+            try
+            {
+                var virtualPath = $"~/{filePath.Replace(HttpContext.Server.MapPath("~"), string.Empty).TrimStart('\\').Replace('\\', '/')}";
+                var physicalPath = HttpContext.Server.MapPath(virtualPath);
+                var json = JsonSerializer.Serialize(data);
+                System.IO.File.WriteAllText(physicalPath, json);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Exception writing file {filePath}: {ex.Message}");
+            }
+        }
 
         // GET: Positions
         public ActionResult Index()
         {
-            return View(db.Position.ToList());
+            return View(positions);
         }
 
         // GET: Positions/Details/5
@@ -28,7 +61,7 @@ namespace E_voting.Controllers
             {
                 return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
             }
-            Position position = db.Position.Find(id);
+            Position position = positions.Find(p => p.PositionId == id);
             if (position == null)
             {
                 return HttpNotFound();
@@ -51,8 +84,8 @@ namespace E_voting.Controllers
         {
             if (ModelState.IsValid)
             {
-                db.Position.Add(position);
-                db.SaveChanges();
+                positions.Add(position);
+                SaveToJson(positions, PositionsFilePath);
                 return RedirectToAction("Index");
             }
 
@@ -66,7 +99,7 @@ namespace E_voting.Controllers
             {
                 return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
             }
-            Position position = db.Position.Find(id);
+            Position position = positions.Find(p => p.PositionId == id);
             if (position == null)
             {
                 return HttpNotFound();
@@ -83,8 +116,13 @@ namespace E_voting.Controllers
         {
             if (ModelState.IsValid)
             {
-                db.Entry(position).State = EntityState.Modified;
-                db.SaveChanges();
+                var existingPosition = positions.Find(p => p.PositionId == position.PositionId);
+                if (existingPosition != null)
+                {
+                    existingPosition.PositionName = position.PositionName;
+                    SaveToJson(positions, PositionsFilePath);
+                }
+
                 return RedirectToAction("Index");
             }
             return View(position);
@@ -97,7 +135,7 @@ namespace E_voting.Controllers
             {
                 return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
             }
-            Position position = db.Position.Find(id);
+            Position position = positions.Find(p => p.PositionId==id);
             if (position == null)
             {
                 return HttpNotFound();
@@ -110,19 +148,22 @@ namespace E_voting.Controllers
         [ValidateAntiForgeryToken]
         public ActionResult DeleteConfirmed(int id)
         {
-            Position position = db.Position.Find(id);
-            db.Position.Remove(position);
-            db.SaveChanges();
+            Position position = positions.Find(p => p.PositionId == id);
+            if (position != null)
+            {
+                positions.Remove(position);
+                SaveToJson(positions, PositionsFilePath);
+            }
             return RedirectToAction("Index");
         }
 
-        protected override void Dispose(bool disposing)
+       /* protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
                 db.Dispose();
             }
             base.Dispose(disposing);
-        }
+        }*/
     }
 }

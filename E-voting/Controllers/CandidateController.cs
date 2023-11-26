@@ -8,19 +8,68 @@ using System.Net;
 using System.Web;
 using System.Web.Helpers;
 using System.Web.Mvc;
-using E_voting.Models.DataContext;
 using E_voting.Models.Model;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Imaging;
 
 namespace E_voting.Controllers
 {
     public class CandidateController : Controller
     {
-        private EvotingDBContext db = new EvotingDBContext();
+        private string FilePath;
+        List<Candidate> candidates;
+
+        protected override void OnActionExecuting(ActionExecutingContext filterContext)
+        {
+            base.OnActionExecuting(filterContext);
+
+            // Initialize paths here
+            string appPath = HttpContext.Server.MapPath("~");
+            FilePath = Path.Combine(appPath, "JSONFiles", "candidates.json");
+
+            // Load data
+            candidates = LoadFromJson<List<Candidate>>(FilePath) ?? new List<Candidate>();
+        }
+
+        private T LoadFromJson<T>(string filePath)
+        {
+            try
+            {
+                var virtualPath = $"~/{filePath.Replace(HttpContext.Server.MapPath("~"), string.Empty).TrimStart('\\').Replace('\\', '/')}";
+                var physicalPath = HttpContext.Server.MapPath(virtualPath);
+                var json = System.IO.File.ReadAllText(physicalPath);
+                return JsonSerializer.Deserialize<T>(json);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Exception reading file {filePath}: {ex.Message}");
+                return default;
+            }
+        }
+
+        private void SaveToJson<T>(T data, string filePath)
+        {
+            try
+            {
+                var virtualPath = $"~/{filePath.Replace(HttpContext.Server.MapPath("~"), string.Empty).TrimStart('\\').Replace('\\', '/')}";
+                var physicalPath = HttpContext.Server.MapPath(virtualPath);
+                var json = JsonSerializer.Serialize(data);
+                System.IO.File.WriteAllText(physicalPath, json);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Exception writing file {filePath}: {ex.Message}");
+            }
+        }
 
         // GET: Candidate
         public ActionResult Index()
         {
-            return View(db.Candidate.ToList());
+            candidates = LoadFromJson<List<Candidate>>(FilePath);
+            return View(candidates);
         }
 
         // GET: Candidate/Details/5
@@ -30,7 +79,7 @@ namespace E_voting.Controllers
             {
                 return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
             }
-            Candidate candidate = db.Candidate.Find(id);
+            Candidate candidate = candidates.Find(c => c.CandidateId == id);
             if (candidate == null)
             {
                 return HttpNotFound();
@@ -50,28 +99,43 @@ namespace E_voting.Controllers
         [HttpPost]
         [ValidateAntiForgeryToken]
         [ValidateInput(false)]
-        public ActionResult Create([Bind(Include = "CandidateId,Name,TC,City,MobileNo,Email,PhotoPath")] Candidate candidate,HttpPostedFileBase PhotoPath)
+        public ActionResult Create([Bind(Include = "CandidateId,Name,TC,City,MobileNo,Email,PhotoPath")] Candidate candidate, HttpPostedFileBase PhotoPath)
         {
             if (ModelState.IsValid)
             {
-                if (PhotoPath != null)
+                if (PhotoPath != null && PhotoPath.ContentLength > 0 && IsImage(PhotoPath.ContentType) && PhotoPath.InputStream.CanRead)
                 {
-                    WebImage img = new WebImage(PhotoPath.InputStream);
-                    FileInfo imginfo = new FileInfo(PhotoPath.FileName);
+                    // Generate a unique filename
+                    string logoname = Guid.NewGuid().ToString() + Path.GetExtension(PhotoPath.FileName);
 
-                    string logoname = Guid.NewGuid().ToString() + imginfo.Extension;
-                    img.Resize(50, 50);
-                    img.Save("~/Uploads/Candidate/" + logoname);
+                    // Set the file path
+                    string filePath = Path.Combine(Server.MapPath("~/Uploads/Candidate/"), logoname);
 
+                    // Save the file
+                    PhotoPath.SaveAs(filePath);
+
+                    // Set the candidate's PhotoPath
                     candidate.PhotoPath = "/Uploads/Candidate/" + logoname;
                 }
-                db.Candidate.Add(candidate);
-                db.SaveChanges();
+                else
+                {
+                    ModelState.AddModelError("PhotoPath", "Invalid or non-image file uploaded.");
+                    return View(candidate);
+                }
+
+                candidates.Add(candidate);
+                SaveToJson(candidates, FilePath);
                 return RedirectToAction("Index");
             }
 
             return View(candidate);
         }
+
+        private bool IsImage(string contentType)
+        {
+            return contentType.StartsWith("image/");
+        }
+
 
         // GET: Candidate/Edit/5
         public ActionResult Edit(int? id)
@@ -80,7 +144,7 @@ namespace E_voting.Controllers
             {
                 return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
             }
-            Candidate candidate = db.Candidate.Find(id);
+            Candidate candidate = candidates.Find(c => c.CandidateId == id);
             if (candidate == null)
             {
                 return HttpNotFound();
@@ -98,7 +162,7 @@ namespace E_voting.Controllers
         {
             if (ModelState.IsValid)
             {
-                var k = db.Candidate.Where(x => x.CandidateId == candidate.CandidateId).SingleOrDefault();
+                var k = candidates.Where(x => x.CandidateId == candidate.CandidateId).SingleOrDefault();
 
                 if (PhotoPath != null)
                 {
@@ -121,8 +185,8 @@ namespace E_voting.Controllers
                 k.TC = candidate.TC;
                 k.City = candidate.City;
                 k.Email = candidate.Email;
-                
-                db.SaveChanges();
+
+                SaveToJson(candidates, FilePath);
                 return RedirectToAction("Index");
             }
             return View(candidate);
@@ -135,7 +199,7 @@ namespace E_voting.Controllers
             {
                 return new HttpStatusCodeResult(HttpStatusCode.BadRequest);
             }
-            Candidate candidate = db.Candidate.Find(id);
+            Candidate candidate = candidates.Find(c => c.CandidateId == id);
             if (candidate == null)
             {
                 return HttpNotFound();
@@ -148,19 +212,22 @@ namespace E_voting.Controllers
         [ValidateAntiForgeryToken]
         public ActionResult DeleteConfirmed(int id)
         {
-            Candidate candidate = db.Candidate.Find(id);
-            db.Candidate.Remove(candidate);
-            db.SaveChanges();
+            Candidate candidate = candidates.Find(c => c.CandidateId == id);
+            if (candidate != null)
+            {
+                candidates.Remove(candidate);
+                SaveToJson(candidates,FilePath);
+            }
             return RedirectToAction("Index");
         }
 
-        protected override void Dispose(bool disposing)
+       /* protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
                 db.Dispose();
             }
             base.Dispose(disposing);
-        }
+        }*/
     }
 }

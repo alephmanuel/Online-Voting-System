@@ -1,5 +1,5 @@
 ﻿using E_voting.Models;
-using E_voting.Models.DataContext;
+/*using E_voting.Models.DataContext;*/
 using E_voting.Models.Model;
 using System;
 using System.Collections.Generic;
@@ -9,23 +9,65 @@ using System.Web.Helpers;
 using System.Web.Mvc;
 using System.Security.Cryptography;
 using System.Text;
+using Newtonsoft.Json;
+using System.IO;
 
 namespace E_voting.Controllers
 {
     public class VoteController : Controller
     {
-        EvotingDBContext db = new EvotingDBContext();
+        private const string ResultsFilePath = "C:\\Users\\aleph\\Documents\\GitHub\\Online-Voting-System\\E-voting\\JSONFiles\\results.json";
+        private const string CandidatesFilePath = "C:\\Users\\aleph\\Documents\\GitHub\\Online-Voting-System\\E-voting\\JSONFiles\\candidates.json";
+        private const string VotersFilePath = "C:\\Users\\aleph\\Documents\\GitHub\\Online-Voting-System\\E-voting\\JSONFiles\\voters.json";
+        private List<Result> results;
+        private List<Candidate> candidates;
+        private List<Voter> voters;
+
+        public VoteController()
+        {
+            results = new List<Result>();
+            candidates = new List<Candidate>();
+            voters = new List<Voter>();
+        }
+
+        private T LoadFromJson<T>(string filePath)
+        {
+            try
+            {
+                var json = System.IO.File.ReadAllText(Server.MapPath(filePath));
+                return JsonConvert.DeserializeObject<T>(json);
+            }
+            catch (FileNotFoundException)
+            {
+                return default(T);
+            }
+        }
+
+        private void SaveToJson<T>(T data, string filePath)
+        {
+            var json = JsonConvert.SerializeObject(data);
+            System.IO.File.WriteAllText(Server.MapPath(filePath), json);
+        }
+
+       /* public static string Encryption(string strText)
+        {
+            using (var md5 = MD5.Create())
+            {
+                var hashed = md5.ComputeHash(Encoding.UTF8.GetBytes(strText));
+                return BitConverter.ToString(hashed).Replace("-", "").ToLower();
+            }
+        }*/
+
         // GET: Vote
         [Route("")]
         [Route("Vote/Home")]
         public ActionResult Index()
         {
-            // ViewBag.Candidate = db.Candidate.ToList().OrderByDescending(x => x.CandidateId);
             return View();
         }
         public ActionResult VoteNow()
         {
-            return View(db.Candidate.ToList().OrderByDescending(x => x.CandidateId));
+            return View(candidates.OrderByDescending(x => x.CandidateId));
         }
 
         public ActionResult Login()
@@ -35,7 +77,7 @@ namespace E_voting.Controllers
         [HttpPost]
         public ActionResult Login(Voter voter)
         {
-            var login = db.Voter.Where(x => x.Email == voter.Email).SingleOrDefault();
+            var login = voters.Where(x => x.Email == voter.Email).SingleOrDefault();
             if(login.Email==voter.Email && login.Password== Crypto.Hash(voter.Password, "MD5"))
             {
                 Session["voterid"] = login.VoterId;
@@ -108,8 +150,8 @@ namespace E_voting.Controllers
             //{
             //    return Json(true, JsonRequestBehavior.AllowGet);
             //}
-            db.Result.Add(new Result { CandidateId = candidate, VoterId = Encryption(voter) });
-            db.SaveChanges();
+            results.Add(new Result { CandidateId = candidate, VoterId = Encryption(voter) });
+            SaveToJson(results, ResultsFilePath);
 
             return Json(false, JsonRequestBehavior.AllowGet);
         }

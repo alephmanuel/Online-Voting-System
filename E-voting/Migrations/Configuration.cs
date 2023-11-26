@@ -1,4 +1,4 @@
-namespace E_voting.Migrations
+/*namespace E_voting.Migrations
 {
     using System;
     using System.Data.Entity;
@@ -20,4 +20,4 @@ namespace E_voting.Migrations
             //  to avoid creating duplicate seed data.
         }
     }
-}
+}*/

@@ -1,75 +1,63 @@
-﻿using E_voting.Models.DataContext;
-using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using System.Web;
 using System.Web.Mvc;
+using E_voting.Models.Model;
+using Newtonsoft.Json; // Ensure to include the Newtonsoft.Json NuGet package
 
 namespace E_voting.Controllers
 {
     public class ResultController : Controller
     {
-        private EvotingDBContext db = new EvotingDBContext();
+        private const string ResultsFilePath = "C:\\Users\\aleph\\Documents\\GitHub\\Online-Voting-System\\E-voting\\JSONFiles\\results.json";
+        private const string CandidatesFilePath = "C:\\Users\\aleph\\Documents\\GitHub\\Online-Voting-System\\E-voting\\JSONFiles\\candidates.json";
+        private List<Result> results;
+        private List<Candidate> candidates;
+
+        public ResultController()
+        {
+            results = LoadFromJson<List<Result>>(ResultsFilePath) ?? new List<Result>();
+            candidates = LoadFromJson<List<Candidate>>(CandidatesFilePath) ?? new List<Candidate>();
+        }
+
         // GET: Result
-        public ActionResult Index() {
-            db.Configuration.LazyLoadingEnabled = false;
+        public ActionResult Index()
+        {
             Dictionary<string, int> counts = new Dictionary<string, int>();
-            foreach (var item in db.Result.ToList())
+            foreach (var item in results)
             {
-                string id = item.CandidateId;
-                KeyValuePair<string, int> temp = new KeyValuePair<string, int>(id.ToString(), 1);
-                if (counts.ContainsKey(id.ToString()))
+                string id = item.CandidateId.ToString();
+                if (counts.ContainsKey(id))
                 {
-                    int index = Array.IndexOf(counts.Keys.ToArray(), id.ToString());
-
-
-
-                    counts[id.ToString()] = counts[id.ToString()] + 1;
+                    counts[id] = counts[id] + 1;
                 }
                 else
-                    counts.Add(id.ToString(), 1);
+                {
+                    counts.Add(id, 1);
+                }
             }
+
             int tempmax = counts.Values.Max();
-            string tempkey = "";
-            foreach (var item in counts)
-            {
-                if (item.Value == tempmax)
-                {
-                    tempkey = item.Key;
-                    break;
-                }
-            }
-            string tempname = "a";
-            foreach (var item in db.Candidate)
-            {
-                if (item.CandidateId.ToString() == tempkey)
-                {
-                    tempname = item.Name;
-                    break;
-                }
-            }
+            string tempkey = counts.FirstOrDefault(x => x.Value == tempmax).Key;
+            string tempname = candidates.FirstOrDefault(c => c.CandidateId.ToString() == tempkey)?.Name ?? "Unknown";
+
             ViewBag.winnerid = tempkey;
             ViewBag.number = tempname;
             ViewBag.winnercount = tempmax.ToString();
-            return View(db.Result.ToList());
+            return View(results);
         }
 
-        /*Count*/
-//        Dictionary<string, int> counts = new Dictionary<string, int>();
-//            foreach (var item in db.Result.ToList())
-//            {
-//                int id = item.CandidateId;
-//        KeyValuePair<string, int> temp = new KeyValuePair<string, int>(id.ToString(), 1);
-//                if (counts.ContainsKey(id.ToString()))
-//                {
-//                    int index = Array.IndexOf(counts.Keys.ToArray(), id.ToString());
-
-//        counts[id.ToString()] = counts[id.ToString()] + 1;
-//                }
-//                else
-//                    counts.Add(id.ToString(), 1);                
-//            }
-//        int tempmax = counts.Values.Max();
-
+        private T LoadFromJson<T>(string filePath)
+        {
+            try
+            {
+                var json = System.IO.File.ReadAllText(Server.MapPath(filePath));
+                return JsonConvert.DeserializeObject<T>(json);
+            }
+            catch (FileNotFoundException)
+            {
+                return default(T);
+            }
+        }
     }
 }
